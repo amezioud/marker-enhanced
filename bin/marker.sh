@@ -97,14 +97,14 @@ if [[ -n "$ZSH_VERSION" ]]; then
             result=$(<$tmp_file)
             rm -f "$tmp_file"
             if [[ -z "$result" ]]; then return; fi
-            match_escaped=$(echo "$match" | sed 's/"/\\"/g')
-            placeholder_offset=$(echo "$BUFFER" | python3 -c "import sys; print(sys.stdin.read().index('$match_escaped'))")
+            placeholder_offset=$(echo "$BUFFER" | MARKER_MATCH="$match" python3 -c "import sys, os; print(sys.stdin.read().index(os.environ['MARKER_MATCH']))")
+            if [[ -z "$placeholder_offset" ]]; then return; fi
             BUFFER="${BUFFER[1,$placeholder_offset]}${result%$'\n'}${BUFFER[$placeholder_offset+1+$len,-1]}"
             CURSOR=$((placeholder_offset + ${#result} - 1))
         else
             # Static placeholder: just remove {{...}} and place cursor
-            match=$(echo "$match" | sed 's/"/\\"/g')
-            placeholder_offset=$(echo "$BUFFER" | python3 -c "import sys; print(sys.stdin.read().index('$match'))")
+            placeholder_offset=$(echo "$BUFFER" | MARKER_MATCH="$match" python3 -c "import sys, os; print(sys.stdin.read().index(os.environ['MARKER_MATCH']))")
+            if [[ -z "$placeholder_offset" ]]; then return; fi
             CURSOR="$placeholder_offset"
             BUFFER="${BUFFER[1,$placeholder_offset]}${BUFFER[$placeholder_offset+1+$len,-1]}"
         fi
@@ -136,14 +136,14 @@ elif [[ -n "$BASH" ]]; then
             result=$(<$tmp_file)
             rm -f "$tmp_file"
             if [[ -z "$result" ]]; then return; fi
-            match_escaped=$(echo "$match" | sed 's/"/\\"/g')
-            placeholder_offset=$(echo "$READLINE_LINE" | python3 -c "import sys; print(sys.stdin.read().index('$match_escaped'))")
+            placeholder_offset=$(echo "$READLINE_LINE" | MARKER_MATCH="$match" python3 -c "import sys, os; print(sys.stdin.read().index(os.environ['MARKER_MATCH']))")
+            if [[ -z "$placeholder_offset" ]]; then return; fi
             result="${result%$'\n'}"
             READLINE_LINE="${READLINE_LINE:0:$placeholder_offset}${result}${READLINE_LINE:$((placeholder_offset+len))}"
             READLINE_POINT=$((placeholder_offset + ${#result}))
         else
-            match=$(echo "$match" | sed 's/"/\\"/g')
-            placeholder_offset=$(echo "$READLINE_LINE" | python3 -c "import sys; print(sys.stdin.read().index('$match'))")
+            placeholder_offset=$(echo "$READLINE_LINE" | MARKER_MATCH="$match" python3 -c "import sys, os; print(sys.stdin.read().index(os.environ['MARKER_MATCH']))")
+            if [[ -z "$placeholder_offset" ]]; then return; fi
             READLINE_POINT="$placeholder_offset"
             READLINE_LINE="${READLINE_LINE:0:$placeholder_offset}${READLINE_LINE:$((placeholder_offset+len))}"
         fi
