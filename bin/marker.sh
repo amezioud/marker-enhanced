@@ -92,15 +92,21 @@ if [[ -n "$ZSH_VERSION" ]]; then
         # Dynamic placeholder: {{name:shell-command}}
         dyn_cmd=$(echo "$match" | perl -nle '/^\{\{[^:}]+:(.+)\}\}$/ and print $1')
         if [[ ! -z "$dyn_cmd" ]]; then
+            zle beginning-of-line
+            col=$(get_col_position)
+            place_cursor_next_line
             tmp_file=$(mktemp -t marker.XXXX)
             </dev/tty ${MARKER_HOME}/bin/marker complete --command="$dyn_cmd" --stdout="$tmp_file"
             result=$(<$tmp_file)
             rm -f "$tmp_file"
+            row=$(get_row_position)
+            place_cursor $(($row - 1)) $col
             if [[ -z "$result" ]]; then return; fi
             placeholder_offset=$(echo "$BUFFER" | MARKER_MATCH="$match" python3 -c "import sys, os; print(sys.stdin.read().index(os.environ['MARKER_MATCH']))")
             if [[ -z "$placeholder_offset" ]]; then return; fi
-            BUFFER="${BUFFER[1,$placeholder_offset]}${result%$'\n'}${BUFFER[$placeholder_offset+1+$len,-1]}"
-            CURSOR=$((placeholder_offset + ${#result} - 1))
+            result="${result%$'\n'}"
+            BUFFER="${BUFFER[1,$placeholder_offset]}${result}${BUFFER[$placeholder_offset+1+$len,-1]}"
+            CURSOR=$((placeholder_offset + ${#result}))
         else
             # Static placeholder: just remove {{...}} and place cursor
             placeholder_offset=$(echo "$BUFFER" | MARKER_MATCH="$match" python3 -c "import sys, os; print(sys.stdin.read().index(os.environ['MARKER_MATCH']))")
@@ -131,10 +137,14 @@ elif [[ -n "$BASH" ]]; then
 
         dyn_cmd=$(echo "$match" | perl -nle '/^\{\{[^:}]+:(.+)\}\}$/ and print $1')
         if [[ ! -z "$dyn_cmd" ]]; then
+            col=$(get_col_position)
+            place_cursor_next_line
             tmp_file=$(mktemp -t marker.XXXX)
             </dev/tty ${MARKER_HOME}/bin/marker complete --command="$dyn_cmd" --stdout="$tmp_file"
             result=$(<$tmp_file)
             rm -f "$tmp_file"
+            row=$(get_row_position)
+            place_cursor $row $col
             if [[ -z "$result" ]]; then return; fi
             placeholder_offset=$(echo "$READLINE_LINE" | MARKER_MATCH="$match" python3 -c "import sys, os; print(sys.stdin.read().index(os.environ['MARKER_MATCH']))")
             if [[ -z "$placeholder_offset" ]]; then return; fi
