@@ -85,12 +85,15 @@ if [[ -n "$ZSH_VERSION" ]]; then
     }
     # move the cursor to the next placeholder {{name}} or complete {{name:shell-command}}
     function _move_cursor_to_next_placeholder {
-        match=$(echo "$BUFFER" | perl -nle 'print $& if m{\{\{.+?\}\}}' | head -n 1)
-        if [[ -z "$match" ]]; then return; fi
-        len=${#match}
+        local ph_info match match_len placeholder_offset dyn_cmd tmp_file result cursor new_buffer row col
+        ph_info=$(${MARKER_HOME}/bin/marker placeholder find "$BUFFER")
+        if [[ -z "$ph_info" ]]; then return; fi
+        placeholder_offset=${ph_info%% *}
+        match=${ph_info#* }
+        match_len=${#match}
 
         # Dynamic placeholder: {{name:shell-command}}
-        dyn_cmd=$(echo "$match" | perl -nle '/^\{\{[^:}]+:(.+)\}\}$/ and print $1')
+        dyn_cmd=$(${MARKER_HOME}/bin/marker placeholder dyn-cmd "$match")
         if [[ ! -z "$dyn_cmd" ]]; then
             zle beginning-of-line
             col=$(get_col_position)
@@ -102,17 +105,15 @@ if [[ -n "$ZSH_VERSION" ]]; then
             row=$(get_row_position)
             place_cursor $(($row - 1)) $col
             if [[ -z "$result" ]]; then return; fi
-            placeholder_offset=$(echo "$BUFFER" | MARKER_MATCH="$match" python3 -c "import sys, os; print(sys.stdin.read().index(os.environ['MARKER_MATCH']))")
-            if [[ -z "$placeholder_offset" ]]; then return; fi
             result="${result%$'\n'}"
-            BUFFER="${BUFFER[1,$placeholder_offset]}${result}${BUFFER[$placeholder_offset+1+$len,-1]}"
-            CURSOR=$((placeholder_offset + ${#result}))
+            ph_out=$(${MARKER_HOME}/bin/marker placeholder replace "$BUFFER" "$match" "$result")
+            CURSOR=${ph_out%%$'\n'*}
+            BUFFER=${ph_out#*$'\n'}
         else
-            # Static placeholder: just remove {{...}} and place cursor
-            placeholder_offset=$(echo "$BUFFER" | MARKER_MATCH="$match" python3 -c "import sys, os; print(sys.stdin.read().index(os.environ['MARKER_MATCH']))")
-            if [[ -z "$placeholder_offset" ]]; then return; fi
-            CURSOR="$placeholder_offset"
-            BUFFER="${BUFFER[1,$placeholder_offset]}${BUFFER[$placeholder_offset+1+$len,-1]}"
+            # Static placeholder: remove {{...}} and place cursor at its position
+            ph_out=$(${MARKER_HOME}/bin/marker placeholder replace "$BUFFER" "$match" "")
+            CURSOR=${ph_out%%$'\n'*}
+            BUFFER=${ph_out#*$'\n'}
         fi
     }
 
@@ -131,11 +132,13 @@ elif [[ -n "$BASH" ]]; then
 
     # move the cursor to the next placeholder {{name}} or complete {{name:shell-command}}
     function _move_cursor_to_next_placeholder {
-        match=$(echo "$READLINE_LINE" | perl -nle 'print $& if m{\{\{.+?\}\}}' | head -n 1)
-        if [[ -z "$match" ]]; then return; fi
-        len=${#match}
+        local ph_info match placeholder_offset dyn_cmd tmp_file result row col ph_out
+        ph_info=$(${MARKER_HOME}/bin/marker placeholder find "$READLINE_LINE")
+        if [[ -z "$ph_info" ]]; then return; fi
+        placeholder_offset=${ph_info%% *}
+        match=${ph_info#* }
 
-        dyn_cmd=$(echo "$match" | perl -nle '/^\{\{[^:}]+:(.+)\}\}$/ and print $1')
+        dyn_cmd=$(${MARKER_HOME}/bin/marker placeholder dyn-cmd "$match")
         if [[ ! -z "$dyn_cmd" ]]; then
             col=$(get_col_position)
             place_cursor_next_line
@@ -146,16 +149,14 @@ elif [[ -n "$BASH" ]]; then
             row=$(get_row_position)
             place_cursor $row $col
             if [[ -z "$result" ]]; then return; fi
-            placeholder_offset=$(echo "$READLINE_LINE" | MARKER_MATCH="$match" python3 -c "import sys, os; print(sys.stdin.read().index(os.environ['MARKER_MATCH']))")
-            if [[ -z "$placeholder_offset" ]]; then return; fi
             result="${result%$'\n'}"
-            READLINE_LINE="${READLINE_LINE:0:$placeholder_offset}${result}${READLINE_LINE:$((placeholder_offset+len))}"
-            READLINE_POINT=$((placeholder_offset + ${#result}))
+            ph_out=$(${MARKER_HOME}/bin/marker placeholder replace "$READLINE_LINE" "$match" "$result")
+            READLINE_POINT=${ph_out%%$'\n'*}
+            READLINE_LINE=${ph_out#*$'\n'}
         else
-            placeholder_offset=$(echo "$READLINE_LINE" | MARKER_MATCH="$match" python3 -c "import sys, os; print(sys.stdin.read().index(os.environ['MARKER_MATCH']))")
-            if [[ -z "$placeholder_offset" ]]; then return; fi
-            READLINE_POINT="$placeholder_offset"
-            READLINE_LINE="${READLINE_LINE:0:$placeholder_offset}${READLINE_LINE:$((placeholder_offset+len))}"
+            ph_out=$(${MARKER_HOME}/bin/marker placeholder replace "$READLINE_LINE" "$match" "")
+            READLINE_POINT=${ph_out%%$'\n'*}
+            READLINE_LINE=${ph_out#*$'\n'}
         fi
     }
 

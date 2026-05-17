@@ -41,6 +41,20 @@ def _parse_and_run() -> None:
     p_complete.add_argument("--command", type=str, required=True, help="shell command to run")
     p_complete.add_argument("--stdout", type=str, help="write result to this file")
 
+    p_ph = sub.add_parser("placeholder", help="placeholder utilities for shell integration")
+    ph_sub = p_ph.add_subparsers(title="actions", dest="ph_action")
+
+    ph_find = ph_sub.add_parser("find", help="find first placeholder; prints '<offset> <text>'")
+    ph_find.add_argument("text", type=str)
+
+    ph_dynCmd = ph_sub.add_parser("dyn-cmd", help="print dynamic command from a placeholder")
+    ph_dynCmd.add_argument("placeholder", type=str)
+
+    ph_replace = ph_sub.add_parser("replace", help="replace placeholder; prints '<cursor> <new_text>'")
+    ph_replace.add_argument("text", type=str)
+    ph_replace.add_argument("placeholder", type=str)
+    ph_replace.add_argument("value", type=str)
+
     args = parser.parse_args()
 
     if args.cmd == "mark":
@@ -64,6 +78,23 @@ def _parse_and_run() -> None:
             Path(args.stdout).write_text((result or "") + "\n")
         else:
             print(result or "")
+    elif args.cmd == "placeholder":
+        from marker.placeholder import dynamic_command, find_first, replace as ph_replace
+        if args.ph_action == "find":
+            found = find_first(args.text)
+            if found:
+                ph_text, offset = found
+                print(f"{offset} {ph_text}")
+        elif args.ph_action == "dyn-cmd":
+            cmd = dynamic_command(args.placeholder)
+            if cmd:
+                print(cmd)
+        elif args.ph_action == "replace":
+            new_text, cursor = ph_replace(args.text, args.placeholder, args.value)
+            print(f"{cursor}")
+            print(new_text)
+        else:
+            p_ph.print_help()
     else:
         parser.print_help()
 
