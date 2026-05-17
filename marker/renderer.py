@@ -1,84 +1,84 @@
-import os
-from . import ansi
-import re
+from __future__ import annotations
+
 import math
+import re
+import subprocess
 import sys
-'''Command line user interface'''
 
-def _get_terminal_columns():
-    ''' get the number of terminal columns, used to determine spanned lines of a mark(required for cursor placement) '''
-    rows, columns = os.popen('stty size', 'r').read().split()
-    # the -1 is to keep the command prompt displayed
-    return int(rows) - 1, int(columns)
+from . import ansi
 
-def unicode_length(string):
-    if sys.version_info[0] == 2:
-        return len(string.decode('utf-8'))
-    else:
-        return len(string)
+_ANSI_ESCAPE = re.compile(r"\x1b[^m]*m")
 
-def erase():
-    ''' the commandline cursor is always at the first line (Marker prompt)
-    Therefore, erasing the current and following lines clear all marker output
-    '''
+
+def _terminal_size() -> tuple[int, int]:
+    result = subprocess.run(["stty", "size"], capture_output=True, text=True)
+    rows_str, cols_str = result.stdout.split()
+    return int(rows_str) - 1, int(cols_str)
+
+
+def _visible_len(s: str) -> int:
+    return len(_ANSI_ESCAPE.sub("", s))
+
+
+def _num_rows(line: str, columns: int) -> int:
+    return max(1, math.ceil(_visible_len(line) / columns))
+
+
+def erase() -> None:
     ansi.move_cursor_line_beggining()
     ansi.erase_from_cursor_to_end()
 
-def refresh(state):
-    ''' Redraw the output, this function will be triggered on every user interaction(key pressed)'''
+
+def refresh(state: object) -> None:
     erase()
-    lines, num_rows = _construct_output(state)
+    lines, num_rows = _build_output(state)
     for line in lines[:-1]:
         print(line)
-    # new new line for the last result
-    if(lines):
+    if lines:
         sys.stdout.write(lines[-1])
-    # go up
     ansi.move_cursor_previous_lines(num_rows - 1)
-    # palce the cursor at the end of first line
-    ansi.move_cursor_horizental(len(lines[0])+1)
+    cursor_col = len("search for: ") + state.cursor_pos + 1  # type: ignore[attr-defined]
+    ansi.move_cursor_horizental(cursor_col)
     ansi.flush()
 
-def _construct_output(state):
-    rows, columns = _get_terminal_columns()
-    ansi_escape = re.compile(r'\x1b[^m]*m')
-    def number_of_rows(line):
-        line = ansi_escape.sub('', line)
-        return int(math.ceil(float(unicode_length(line))/columns))
-    displayed_lines = []
-    # Number of terminal rows spanned by the output, used to determine how many lines we need to go up(to place the cursor after the prompt) after displaying the output
-    num_rows = 0
-    prompt_line = 'search for: ' + state.input
-    displayed_lines.append(prompt_line)
-    num_rows += number_of_rows(prompt_line)
-    matches = state.get_matches()
-    if matches:
-        # display commands from Max(0,selected_command_index - 10 +1 ) to Max(10,SelectedCommandIndex + 1)
-        selected_command_index = matches.index(state.get_selected_match())
-        num_results = 10
-        matches_to_display = []
-        while (True):
-            filtered_matches = matches[max(0, selected_command_index - num_results + 1):max(num_results, selected_command_index + 1)]
-            filtered_matches_rows = sum(number_of_rows(' ' + str(el)) for el in filtered_matches)
-            if rows - num_rows < filtered_matches_rows:
-                num_results -= 1
-            else:
-                matches_to_display = filtered_matches
-                break
-        for index, m in enumerate(matches_to_display):
-            fm = ' '+str(m)
-            num_rows += number_of_rows(fm)
-            # Formatting text(make searched word bold)
-            for w in state.input.split(' '):
-                if w:
-                    fm = fm.replace(w, ansi.bold_text(w))
-            # highlighting selected command
-            if m == state.get_selected_match():
-                fm = ansi.select_text(fm)
-            displayed_lines.append(fm)
-    else:
-        not_found_line = 'Nothing found'
-        displayed_lines.append(not_found_line)
-        num_rows += number_of_rows(not_found_line)
-    return displayed_lines, num_rows
 
+def _build_output(state: object) -> tuple[list[str], int]:
+    rows, columns = _terminal_size()
+    lines: list[str] = []
+    total_rows = 0
+
+    prompt = "search for: " + state.input  # type: ignore[attr-defined]
+    lines.append(prompt)
+    total_rows += _num_rows(prompt, columns)
+
+    matches = state.get_matches()  # type: ignore[attr-defined]
+    if not matches:
+        not_found = "Nothing found"
+        lines.append(not_found)
+        total_rows += _num_rows(not_found, columns)
+        return lines, total_rows
+
+    selected = state.get_selected_match()  # type: ignore[attr-defined]
+    selected_idx = matches.index(selected)
+    num_results = 10
+
+    while True:
+        window = matches[
+            max(0, selected_idx - num_results + 1) : max(num_results, selected_idx + 1)
+        ]
+        window_rows = sum(_num_rows(" " + str(m), columns) for m in window)
+        if rows - total_rows >= window_rows or num_results <= 1:
+            break
+        num_results -= 1
+
+    for m in window:
+        line = " " + str(m)
+        total_rows += _num_rows(line, columns)
+        for word in state.input.split():  # type: ignore[attr-defined]
+            if word:
+                line = line.replace(word, ansi.bold_text(word))
+        if m is selected:
+            line = ansi.select_text(line)
+        lines.append(line)
+
+    return lines, total_rows

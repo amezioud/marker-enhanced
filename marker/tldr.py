@@ -1,4 +1,2 @@
-
-def update():
+def update() -> None:
     pass
-

@@ -1,65 +1,76 @@
-#!/usr/bin/env python
-from __future__ import print_function
-import sys
+#!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import os
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from marker import core
 
-def parse_arguments():
-    parser = argparse.ArgumentParser(description="Marker: a tool to quickly bookmark and retreive commands")
-    subparsers = parser.add_subparsers(title="commands", dest="subparser_name")
 
-    parser_mark = subparsers.add_parser("mark", help="mark a command")
-    parser_mark.add_argument("--command", type=str, help="Command to mark")
-    parser_mark.add_argument("--alias", type=str, help="an alias of the command")
-    parser_mark.set_defaults(func=cmd_mark)
+def _require_sourced() -> None:
+    if not os.getenv("MARKER_DATA_HOME"):
+        sys.exit("Please source the marker file in your shell's rc file first.")
 
-    parser_get = subparsers.add_parser("get", help="get marker commands that match a given search string")
-    parser_get.add_argument("--search", type=str, help="Search string")  
-    parser_get.add_argument("--stdout", type=str, help="Where to store result(defaut to stdout)")
-    parser_get.set_defaults(func=cmd_get)
 
-    parser_get = subparsers.add_parser("remove", help="remove a marked command given an optionnal prefix")
-    parser_get.add_argument("--search", type=str, help="Search string")
-    parser_get.set_defaults(func=cmd_remove)
+def _parse_and_run() -> None:
+    parser = argparse.ArgumentParser(
+        description="Marker: bookmark and retrieve shell commands"
+    )
+    sub = parser.add_subparsers(title="commands", dest="cmd")
 
-    parser_update = subparsers.add_parser("update", help="update tldr cache")
-    parser_update.set_defaults(func=cmd_update)
+    p_mark = sub.add_parser("mark", help="bookmark a command")
+    p_mark.add_argument("--command", type=str)
+    p_mark.add_argument("--alias", type=str)
+
+    p_get = sub.add_parser("get", help="fuzzy-search bookmarks")
+    p_get.add_argument("--search", type=str)
+    p_get.add_argument("--stdout", type=str, help="write result to this file instead of stdout")
+
+    p_rm = sub.add_parser("remove", help="remove a bookmarked command")
+    p_rm.add_argument("--search", type=str)
+
+    p_update = sub.add_parser("update", help="update tldr-pages, navi, and optionally cheat.sh")
+    p_update.add_argument("--cheatsh", nargs="+", metavar="TOPIC")
+    p_update.add_argument("--history", action="store_true", help="also import shell history")
+
+    p_complete = sub.add_parser("complete", help="pick a value from a shell command's output")
+    p_complete.add_argument("--command", type=str, required=True, help="shell command to run")
+    p_complete.add_argument("--stdout", type=str, help="write result to this file")
 
     args = parser.parse_args()
-    return args.func(args)
 
-
-def cmd_mark(args):
-    core.mark_command(args.command, None)
-
-
-def cmd_get(args):
-    output = core.get_selected_command_or_input(args.search)
-    if args.stdout:
-        with open(args.stdout,'w+') as save_file:
-            # the newline character is to make sure 'wc -l' executes correctly
-            if output:
-                output+="\n"
-            save_file.write(output)
+    if args.cmd == "mark":
+        core.mark_command(args.command, args.alias)
+    elif args.cmd == "get":
+        result = core.get_selected_command_or_input(args.search)
+        if args.stdout:
+            Path(args.stdout).write_text(result + "\n" if result else "")
+        else:
+            print(result)
+    elif args.cmd == "remove":
+        core.remove_command(args.search)
+    elif args.cmd == "update":
+        core.update_cache(
+            cheatsh_topics=getattr(args, "cheatsh", None),
+            history=args.history,
+        )
+    elif args.cmd == "complete":
+        result = core.complete_placeholder(args.command)
+        if args.stdout:
+            Path(args.stdout).write_text((result or "") + "\n")
+        else:
+            print(result or "")
     else:
-        print(output)
+        parser.print_help()
 
-
-def cmd_remove(args):
-    core.remove_command(args.search)
-
-def cmd_update():
-    core.update_cache()
-
-def marker_sourced():
-    if os.getenv('MARKER_DATA_HOME'):
-        return True
-    return False
 
 if __name__ == "__main__":
-    if not marker_sourced():
-        print("Please source marker file in your shell's")
-        sys.exit(1)
-    parse_arguments()
+    _require_sourced()
+    try:
+        _parse_and_run()
+    except KeyboardInterrupt:
+        sys.exit(0)

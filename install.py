@@ -1,97 +1,76 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+from __future__ import annotations
 
-from __future__ import print_function
 import os
 import platform
-import shutil
-import sys
-import marker
-import subprocess
 import re
+import subprocess
+import sys
+from pathlib import Path
 
-SUPPORTED_SHELLS = ('bash', 'zsh')
-
-
-def get_shell():
-    return os.path.basename(os.getenv('SHELL', ''))
-
-
-def mkdir(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
+SUPPORTED_SHELLS = ("bash", "zsh")
 
 
-def write_to_file(path, data):
-    with open(path, 'w') as f:
-        f.write(data)
+def _current_shell() -> str:
+    return os.path.basename(os.getenv("SHELL", ""))
 
 
-def generate_marker_sh(config_dir, install_dir):
-    ''' generate the sh that needs to be sourced '''
-    return ("export MARKER_DATA_HOME=\"%s\"" % config_dir +
-            "\nexport MARKER_HOME=\"%s\"" % install_dir +
-            "\nsource ${MARKER_HOME}/bin/marker.sh" +
-            "\n"
-            )
+def _generate_marker_sh(config_dir: Path, install_dir: Path) -> str:
+    return (
+        f'export MARKER_DATA_HOME="{config_dir}"\n'
+        f'export MARKER_HOME="{install_dir}"\n'
+        f"source ${{MARKER_HOME}}/bin/marker.sh\n"
+    )
 
 
-def show_post_installation_message(config_dir_rel):
-    print("Marker installed successfully")
-    print("\n")
-    sourced_file = '$HOME/%s/marker.sh' % config_dir_rel
-    source_msg = "[[ -s \"%s\" ]] && source \"%s\"" % (sourced_file, sourced_file)
+def _show_post_install(config_dir_rel: str) -> None:
+    print("Marker installed successfully\n")
+    sourced = f"$HOME/{config_dir_rel}/marker.sh"
+    source_line = f'[[ -s "{sourced}" ]] && source "{sourced}"'
 
-    if platform.system() == 'Darwin' and get_shell() == 'bash':
-        rcfile = '.bash_profile'
+    if platform.system() == "Darwin" and _current_shell() == "bash":
+        rcfile = ".bash_profile"
     else:
-        rcfile = '.%src' % get_shell()
+        rcfile = f".{_current_shell()}rc"
 
-    print("\nPlease add the following line to your ~/%s:" % rcfile)
-    print('\n' + source_msg)
-    print('\n')
-    print("\nPlease restart the terminal after doing that(or re-source your *.rc).")
+    print(f"\nAdd this line to your ~/{rcfile}:\n\n{source_line}\n")
+    print("Restart the terminal (or re-source your rc file) afterwards.")
 
 
-def verify_requirements():
-    if not get_shell() in SUPPORTED_SHELLS:
-        print("Your SHELL %s is not supported" % get_shell(), file=sys.stderr)
-        sys.exit(1)
-    if get_shell() == "bash":
-        version_text = subprocess.Popen("bash --version | head -1", shell=True, stdout=subprocess.PIPE).stdout.read()
-        m = re.search('(\d).(\d)', version_text)
-        if m:
-            major_version = int(m.group(1))
-            minor_version = int(m.group(2))
-            print(version_text)
-            if major_version < 4 or (major_version == 4 and minor_version < 3):
-                print("your Bash version is too old: %s" % version_text, file=sys.stderr)
-                print("Marker requires Bash 4.3+", file=sys.stderr)
-                sys.exit(1)
-        else:
-            print("Couldn't extract bash version, please report the issue", file=sys.stderr)
-            print("Installation failed", file=sys.stderr)
-            sys.exit(1)
+def _verify_requirements() -> None:
+    shell = _current_shell()
+    if shell not in SUPPORTED_SHELLS:
+        sys.exit(f"Shell {shell!r} is not supported (bash or zsh required)")
 
-    if sys.version_info[0] == 2 and sys.version_info[1] < 6:
-        print("Python v2.6+ or v3.0+ required.", file=sys.stderr)
-        sys.exit(1)
+    if shell == "bash":
+        result = subprocess.run(
+            ["bash", "--version"], capture_output=True, text=True
+        )
+        m = re.search(r"(\d+)\.(\d+)", result.stdout)
+        if not m:
+            sys.exit("Could not determine bash version")
+        major, minor = int(m.group(1)), int(m.group(2))
+        if (major, minor) < (4, 3):
+            sys.exit(f"Bash 4.3+ required (found {major}.{minor})")
+
+    if sys.version_info < (3, 8):
+        sys.exit("Python 3.8+ required")
 
 
-def main():
-    verify_requirements()
+def main() -> None:
+    _verify_requirements()
     print("---------------------------------------")
-    config_dir_relative_path = '.local/share/marker'
-    config_dir_abosulte_path = os.path.join(os.path.expanduser("~"), config_dir_relative_path)
-    install_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)))
+    rel = ".local/share/marker"
+    config_dir = Path.home() / rel
+    install_dir = Path(__file__).parent.resolve()
 
-    mkdir(config_dir_abosulte_path)
-    
-    write_to_file(
-        os.path.join(config_dir_abosulte_path, 'marker.sh'),
-        generate_marker_sh(config_dir_abosulte_path, install_dir))
-
-    show_post_installation_message(config_dir_relative_path)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "marker.sh").write_text(
+        _generate_marker_sh(config_dir, install_dir)
+    )
+    _show_post_install(rel)
     print("---------------------------------------")
+
 
 if __name__ == "__main__":
     main()

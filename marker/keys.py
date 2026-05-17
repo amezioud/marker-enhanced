@@ -1,10 +1,16 @@
-CTRL_C = 3         # Ctrl-c
-ENTER = 13         # Enter
-CTRL_U = 21        # Ctrl+u
-ESC = 27           # Escape
-BACKSPACE =  127   # Backspace
-TAB = 9            # Tab
-RIGHT = -1     	   # FAKE CODE to abstract away the fact that a multibyte string is needed to represent arrow keys 
-DOWN = -2          # same
-UP = -3			   # same
-LEFT = -4          # same
+from __future__ import annotations
+
+from typing import Final
+
+CTRL_A: Final = 1
+CTRL_C: Final = 3
+CTRL_E: Final = 5
+ENTER: Final = 13
+CTRL_U: Final = 21
+ESC: Final = 27
+BACKSPACE: Final = 127
+TAB: Final = 9
+RIGHT: Final = -1
+DOWN: Final = -2
+UP: Final = -3
+LEFT: Final = -4

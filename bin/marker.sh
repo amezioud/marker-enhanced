@@ -83,16 +83,31 @@ if [[ -n "$ZSH_VERSION" ]]; then
         BUFFER="$TMP_MARKER"
         zle end-of-line
     }
-    # move the cursor the next placeholder 
+    # move the cursor to the next placeholder {{name}} or complete {{name:shell-command}}
     function _move_cursor_to_next_placeholder {
         match=$(echo "$BUFFER" | perl -nle 'print $& if m{\{\{.+?\}\}}' | head -n 1)
-        if [[ ! -z "$match" ]]; then
-            len=${#match}
+        if [[ -z "$match" ]]; then return; fi
+        len=${#match}
+
+        # Dynamic placeholder: {{name:shell-command}}
+        dyn_cmd=$(echo "$match" | perl -nle '/^\{\{[^:}]+:(.+)\}\}$/ and print $1')
+        if [[ ! -z "$dyn_cmd" ]]; then
+            tmp_file=$(mktemp -t marker.XXXX)
+            </dev/tty ${MARKER_HOME}/bin/marker complete --command="$dyn_cmd" --stdout="$tmp_file"
+            result=$(<$tmp_file)
+            rm -f "$tmp_file"
+            if [[ -z "$result" ]]; then return; fi
+            match_escaped=$(echo "$match" | sed 's/"/\\"/g')
+            placeholder_offset=$(echo "$BUFFER" | python3 -c "import sys; print(sys.stdin.read().index('$match_escaped'))")
+            BUFFER="${BUFFER[1,$placeholder_offset]}${result%$'\n'}${BUFFER[$placeholder_offset+1+$len,-1]}"
+            CURSOR=$((placeholder_offset + ${#result} - 1))
+        else
+            # Static placeholder: just remove {{...}} and place cursor
             match=$(echo "$match" | sed 's/"/\\"/g')
-            placeholder_offset=$(echo "$BUFFER" | python -c 'import sys;keyboard_input = raw_input if sys.version_info[0] == 2 else input; print(keyboard_input().index("'$match'"))')
+            placeholder_offset=$(echo "$BUFFER" | python3 -c "import sys; print(sys.stdin.read().index('$match'))")
             CURSOR="$placeholder_offset"
             BUFFER="${BUFFER[1,$placeholder_offset]}${BUFFER[$placeholder_offset+1+$len,-1]}"
-        fi        
+        fi
     }
 
     zle -N _marker_get
@@ -108,16 +123,30 @@ if [[ -n "$ZSH_VERSION" ]]; then
 
 elif [[ -n "$BASH" ]]; then
 
-    # move the cursor the next placeholder '%%'
+    # move the cursor to the next placeholder {{name}} or complete {{name:shell-command}}
     function _move_cursor_to_next_placeholder {
         match=$(echo "$READLINE_LINE" | perl -nle 'print $& if m{\{\{.+?\}\}}' | head -n 1)
-        if [[ ! -z "$match" ]]; then
-            len=${#match}
+        if [[ -z "$match" ]]; then return; fi
+        len=${#match}
+
+        dyn_cmd=$(echo "$match" | perl -nle '/^\{\{[^:}]+:(.+)\}\}$/ and print $1')
+        if [[ ! -z "$dyn_cmd" ]]; then
+            tmp_file=$(mktemp -t marker.XXXX)
+            </dev/tty ${MARKER_HOME}/bin/marker complete --command="$dyn_cmd" --stdout="$tmp_file"
+            result=$(<$tmp_file)
+            rm -f "$tmp_file"
+            if [[ -z "$result" ]]; then return; fi
+            match_escaped=$(echo "$match" | sed 's/"/\\"/g')
+            placeholder_offset=$(echo "$READLINE_LINE" | python3 -c "import sys; print(sys.stdin.read().index('$match_escaped'))")
+            result="${result%$'\n'}"
+            READLINE_LINE="${READLINE_LINE:0:$placeholder_offset}${result}${READLINE_LINE:$((placeholder_offset+len))}"
+            READLINE_POINT=$((placeholder_offset + ${#result}))
+        else
             match=$(echo "$match" | sed 's/"/\\"/g')
-            placeholder_offset=$(echo "$READLINE_LINE" | python -c 'import sys;keyboard_input = raw_input if sys.version_info[0] == 2 else input; print(keyboard_input().index("'$match'"))')
+            placeholder_offset=$(echo "$READLINE_LINE" | python3 -c "import sys; print(sys.stdin.read().index('$match'))")
             READLINE_POINT="$placeholder_offset"
-            READLINE_LINE="${READLINE_LINE:0:$placeholder_offset}${READLINE_LINE:$placeholder_offset+$len}"
-        fi        
+            READLINE_LINE="${READLINE_LINE:0:$placeholder_offset}${READLINE_LINE:$((placeholder_offset+len))}"
+        fi
     }
 
     # Look at zsh _marker_get docstring

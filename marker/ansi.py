@@ -1,71 +1,65 @@
+from __future__ import annotations
+
 import sys
 
 BOLD = "\x1b[1m"
-CLEAR_FORMATTING = "\x1b[0m"
+CLEAR = "\x1b[0m"
 ERASE_SCREEN = "\x1b[J"
 ERASE_LINE = "\x1b[2K"
-FOREGROUND_BLACK = "\x1b[30m"
-BACKGROUND_WHITE = "\x1b[47m"
-FOREGROUND_GREY = "\x1b[34m"
-
-def _CURSOR_COLUMN(pos):
-    return "\x1b["+str(pos)+"G"
+FG_BLACK = "\x1b[30m"
+BG_WHITE = "\x1b[47m"
+FG_GREY = "\x1b[34m"
 
 
-def _CURSOR_PREVIOUS_LINES(number):
-    return "\x1b["+str(number)+"F"
-
-def get_formattings(text):
-    if CLEAR_FORMATTING in text:
-        return get_formattings(text[text.index(CLEAR_FORMATTING)+len(CLEAR_FORMATTING):])
-    return ''.join([s for s in [BOLD, FOREGROUND_GREY, FOREGROUND_BLACK, BACKGROUND_WHITE] if s in text])
-
-def select_text(text):
-    return  (FOREGROUND_BLACK +
-            BACKGROUND_WHITE + 
-            text.replace(
-                CLEAR_FORMATTING,
-                CLEAR_FORMATTING + FOREGROUND_BLACK + BACKGROUND_WHITE)+
-            CLEAR_FORMATTING +
-            get_formattings(text))
+def _cursor_column(pos: int) -> str:
+    return f"\x1b[{pos}G"
 
 
-def bold_text(text):
-    return  (BOLD + 
-            text.replace(
-                CLEAR_FORMATTING,
-                CLEAR_FORMATTING + BOLD)+
-            CLEAR_FORMATTING +
-            get_formattings(text))
-
-def grey_text(text):
-    return  (FOREGROUND_GREY + 
-            text.replace(
-                CLEAR_FORMATTING,
-                CLEAR_FORMATTING + FOREGROUND_GREY)+
-                CLEAR_FORMATTING +
-                get_formattings(text))
+def _cursor_prev_lines(n: int) -> str:
+    return f"\x1b[{n}F"
 
 
-def move_cursor_line_beggining():
-    sys.stdout.write(_CURSOR_COLUMN(0))
+def _active_formats(text: str) -> str:
+    """Re-emit any formatting codes that were active before the last CLEAR."""
+    if CLEAR in text:
+        return _active_formats(text[text.index(CLEAR) + len(CLEAR) :])
+    return "".join(s for s in (BOLD, FG_GREY, FG_BLACK, BG_WHITE) if s in text)
 
 
-def move_cursor_horizental(n):
-    sys.stdout.write(_CURSOR_COLUMN(n))
+def select_text(text: str) -> str:
+    body = text.replace(CLEAR, CLEAR + FG_BLACK + BG_WHITE)
+    return FG_BLACK + BG_WHITE + body + CLEAR + _active_formats(text)
 
 
-def move_cursor_previous_lines(number_of_lines):
-    sys.stdout.write(_CURSOR_PREVIOUS_LINES(number_of_lines))
+def bold_text(text: str) -> str:
+    body = text.replace(CLEAR, CLEAR + BOLD)
+    return BOLD + body + CLEAR + _active_formats(text)
 
 
-def erase_from_cursor_to_end():
+def grey_text(text: str) -> str:
+    body = text.replace(CLEAR, CLEAR + FG_GREY)
+    return FG_GREY + body + CLEAR + _active_formats(text)
+
+
+def move_cursor_line_beggining() -> None:
+    sys.stdout.write(_cursor_column(0))
+
+
+def move_cursor_horizental(n: int) -> None:
+    sys.stdout.write(_cursor_column(n))
+
+
+def move_cursor_previous_lines(n: int) -> None:
+    sys.stdout.write(_cursor_prev_lines(n))
+
+
+def erase_from_cursor_to_end() -> None:
     sys.stdout.write(ERASE_SCREEN)
 
 
-def erase_line():
+def erase_line() -> None:
     sys.stdout.write(ERASE_LINE)
 
 
-def flush():
+def flush() -> None:
     sys.stdout.flush()
